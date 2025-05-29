@@ -1,14 +1,14 @@
-[![CI](https://github.com/rfjakob/cshatag/actions/workflows/ci.yml/badge.svg)](https://github.com/rfjakob/cshatag/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/rfjakob/cshatag)](https://goreportcard.com/report/github.com/rfjakob/cshatag)
-•
 [View Changelog](#Changelog)
-•
-[Download Binary Releases](https://github.com/rfjakob/cshatag/releases)
 
-cshatag is a tool to detect silent data corruption. It is meant to run periodically
+goshatag is a tool to detect silent data corruption. It is meant to run periodically
 and stores the SHA256 of each file as an extended attribute. The project started
 as a minimal and fast reimplementation of [shatag](https://github.com/maugier/shatag),
 written in Python by Maxime Augier.
+
+goshatag is incompatible with cshatag by default, allowing it to be compatible with 
+ext4 in-inode storage. Migration from cshatag is supported with the argument -migration
+
+goshatag remains backwards compatible with cshatag by using the argument -plaintext
 
 See the [Man Page](#man-page) further down this page for details.
 
@@ -25,16 +25,7 @@ Checksums stored in single central database
 Checksums stored in one database per directory
 * https://github.com/laktak/chkbit-py
 
-Download
---------
-Static amd64 binary that should work on all Linux distros:
-https://github.com/rfjakob/cshatag/releases
-
-Distro Packages
----------------
-[![Packaging status](https://repology.org/badge/vertical-allrepos/cshatag.svg)](https://repology.org/project/cshatag/versions)
-
-Compile Yourself
+Compile
 ----------------
 Needs git, Go and make.
 
@@ -48,27 +39,27 @@ Man Page
 --------
 
 ```
-CSHATAG(1)                       User Manuals                       CSHATAG(1)
+GOSHATAG(1)                      User Manuals                      GOSHATAG(1)
 
 NAME
-       cshatag - compiled shatag
+       goshatag - tag files with sha256 hashes to detect bitrot
 
 SYNOPSIS
-       cshatag [OPTIONS] FILE [FILE...]
+       goshatag [OPTIONS] FILE [FILE...]
 
 DESCRIPTION
-       cshatag is a minimal and fast re-implementation of shatag
+       goshatag is a minimal and fast re-implementation of shatag
        (  https://github.com/maugier/shatag  ,  written  in  Python  by Maxime
-       Augier )
+       Augier)
        in a compiled language (since v2.0: Go, earlier versions: C).
 
-       cshatag is a tool to detect silent data corruption. It writes the mtime
-       and the sha256 checksum of a file into the file's extended  attributes.
-       The  filesystem needs to be mounted with user_xattr enabled for this to
-       work.  When run again, it compares stored mtime  and  checksum.  If  it
-       finds  that  the  mtime  is  unchanged but the checksum has changed, it
-       warns on stderr.  In any case, the status of the  file  is  printed  to
-       stdout and the stored checksum is updated.
+       goshatag is a tool to detect silent  data  corruption.  It  writes  the
+       mtime  and  the  sha256 checksum of a file into the file's extended at‐
+       tributes. The filesystem needs to be mounted  with  user_xattr  enabled
+       for  this to work.  When run again, it compares stored mtime and check‐
+       sum. If it finds that the mtime  is  unchanged  but  the  checksum  has
+       changed,  it  warns  on stderr.  In any case, the status of the file is
+       printed to stdout and the stored checksum is updated.
 
        File statuses that appear on stdout are:
             <new>         file is missing both attributes
@@ -77,10 +68,13 @@ DESCRIPTION
             <timechange>  only mtime has changed, checksum stayed the same
             <corrupt>     mtime stayed the same but checksum changed
 
-       cshatag  aims to be format-compatible with shatag and uses the same ex‐
-       tended attributes (see the COMPATIBILITY section).
+       goshatag no longer aims to be format-compatible with (c)shatag.  If you
+       want  to  use  a  cshatag filesystem with goshatag, please run goshatag
+       with the argument -migrate to completion at least once.  The  migration
+       process can be interrupted safely.  (see the COMPATIBILITY section).
 
-       cshatag was written in C in 2012 and has been rewritten in Go in 2019.
+       cshatag  was written in C in 2012 and has been rewritten in Go in 2019.
+       goshatag was forked in 2025.
 
 OPTIONS
        -dry-run    don't make any changes
@@ -89,16 +83,27 @@ OPTIONS
        -q          quiet mode - don't report <ok> files
        -qq         quiet2 mode - only report <corrupt> files and errors
        -fix        fix the stored sha256 on corrupt files
+       -migrate    migrate from  user.shatag.{sha256,ts}  to  user.hash  (ext4
+       compatibility)
+       -plaintext   use  user.shatag.{sha256,ts} instead of user.hash (cshatag
+       compatibility)
+       -printok    print sha256 and ts for <ok> files
 
 EXAMPLES
-       Check all regular files in the file tree below the current working  di‐
-       rectory:
-       # cshatag -qq -recursive .
+       Check all regular files in the current working directory's file tree:
+       # goshatag -qq -recursive .
        Errors like corrupt files will be printed to stderr.  Run without "-qq"
        to see progress output.
 
-       To remove the extended attributes from all files:
-       # cshatag -recursive -remove .
+       To remove extended attributes from all files:
+       # goshatag -recursive -remove .
+
+       To migrate from cshatag to goshatag:
+       # goshatag -qq -recursive -migrate .
+
+       To  remove  extended attributes from all files, including (c)shatag at‐
+       tributes:
+       # goshatag -recursive -plaintext -remove .
 
 RETURN VALUE
        0 Success
@@ -110,26 +115,42 @@ RETURN VALUE
        6 More than one type of error occurred
 
 COMPATIBILITY
-       cshatag  writes  the  user.shatag.ts field with full integer nanosecond
-       precision, while python uses a double for the whole mtime and loses the
-       last few digits.
+       goshatag writes the extended attribute user.hash with both  the  sha256
+       hash  and  the  ASCII  encoded  time,  whereas the original cshatag and
+       shatag use the attribut  names  user.shatag.sha256  and  user.shatag.ts
+       goshatag and cshatag use higher precision timestamps as compared to the
+       shatag (python) version
 
-AUTHOR
+AUTHORS
+       somehibs <@github>
+       https://github.com/somehibs/goshatag
+
        Jakob Unterwurzacher <jakobunt@gmail.com>
        https://github.com/rfjakob/cshatag
 
 COPYRIGHT
-       Copyright 2012 Jakob Unterwurzacher. MIT License.
+       Copyright 2025 somehibs. MIT  License.   Copyright  2012  Jakob  Unter‐
+       wurzacher. MIT License.
 
 SEE ALSO
-       shatag(1), sha256sum(1), getfattr(1), setfattr(1)
+       cshatag(1), shatag(1), sha256sum(1), getfattr(1), setfattr(1)
 
-Linux                              MAY 2012                         CSHATAG(1)
+Version 3.0.0                      MAY 2012                        GOSHATAG(1)
 ```
 Changelog
 ---------
 
 *Short changelog - for all the details look at the git log.*
+
+v3.0.0, 2025-05-29
+* **Behaviour change: Replace 'user.shatag.ts' and 'user.shatag.sha256' with 'user.hash'**
+  user.hash combines sha256 and ts into a single binary encoded value
+* New flag: '-migrate' will check for and delete plaintext keys, upgrading in place while checking for errors
+* New flag: '-plaintext' will allow you to keep using plaintext keys (512byte inodes, etc)
+* ext4 claims that 256 byte inodes have 100 bytes spare for extended attributes...
+  but we're actually limited to 68 bytes in a single short key or 48 bytes when using two short keys
+* Running cshatag on ext4 with 256 byte inodes and 468,841 files resulted in 1,166,816K of wasted Extended Attributes
+* If you want to use goshatag as-is on ext4, it seems that 512 byte inodes would be useful
 
 v2.2.1, 2024-08-23
 * Fix `Makefile` to ensure the correct version string is baked

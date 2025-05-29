@@ -31,6 +31,9 @@ var args struct {
 	qq        bool
 	dryrun    bool
 	fix       bool
+	migrate   bool
+	plaintext bool
+	printok   bool // output from <ok> is extended with sha and time info
 }
 
 // walkFn is used when `cshatag` is called with the `--recursive` option. It is the function called
@@ -86,6 +89,9 @@ func main() {
 		"Symbolic links are not followed.")
 	flag.BoolVar(&args.dryrun, "dry-run", false, "don't make any changes")
 	flag.BoolVar(&args.fix, "fix", false, "fix the stored sha256 on corrupt files")
+	flag.BoolVar(&args.migrate, "migrate", false, "migrate from user.shatag.{sha256,ts} to user.hash")
+	flag.BoolVar(&args.plaintext, "plaintext", false, "use user.shatag.{sha256,ts} instead of user.hash")
+	flag.BoolVar(&args.printok, "printok", false, "print sha256 and ts for <ok> files")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "%s %s\n", myname, GitVersion)
 		fmt.Fprintf(os.Stderr, "Usage: %s [OPTIONS] FILE [FILE2 ...]\n", myname)

@@ -1,4 +1,4 @@
-module github.com/rfjakob/cshatag
+module github.com/somehibs/goshatag
 
 go 1.15
 

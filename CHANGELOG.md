@@ -3,6 +3,16 @@ Changelog
 
 *Short changelog - for all the details look at the git log.*
 
+v3.0.0, 2025-05-29
+* **Behaviour change: Replace 'user.shatag.ts' and 'user.shatag.sha256' with 'user.hash'**
+  user.hash combines sha256 and ts into a single binary encoded value
+* New flag: '-migrate' will check for and delete plaintext keys, upgrading in place while checking for errors
+* New flag: '-plaintext' will allow you to keep using plaintext keys (512byte inodes, etc)
+* ext4 claims that 256 byte inodes have 100 bytes spare for extended attributes...
+  but we're actually limited to 68 bytes in a single short key or 48 bytes when using two short keys
+* Running cshatag on ext4 with 256 byte inodes and 468,841 files resulted in 1,166,816K of wasted Extended Attributes
+* If you want to use goshatag as-is on ext4, it seems that 512 byte inodes would be useful
+
 v2.2.1, 2024-08-23
 * Fix `Makefile` to ensure the correct version string is baked
   into the binary ([#29](https://github.com/rfjakob/cshatag/issues/29))

@@ -1,14 +1,14 @@
-[![CI](https://github.com/rfjakob/cshatag/actions/workflows/ci.yml/badge.svg)](https://github.com/rfjakob/cshatag/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/rfjakob/cshatag)](https://goreportcard.com/report/github.com/rfjakob/cshatag)
-•
 [View Changelog](#Changelog)
-•
-[Download Binary Releases](https://github.com/rfjakob/cshatag/releases)
 
-cshatag is a tool to detect silent data corruption. It is meant to run periodically
+goshatag is a tool to detect silent data corruption. It is meant to run periodically
 and stores the SHA256 of each file as an extended attribute. The project started
 as a minimal and fast reimplementation of [shatag](https://github.com/maugier/shatag),
 written in Python by Maxime Augier.
+
+goshatag is incompatible with cshatag by default, allowing it to be compatible with 
+ext4 in-inode storage. Migration from cshatag is supported with the argument -migration
+
+goshatag remains backwards compatible with cshatag by using the argument -plaintext
 
 See the [Man Page](#man-page) further down this page for details.
 
@@ -25,16 +25,7 @@ Checksums stored in single central database
 Checksums stored in one database per directory
 * https://github.com/laktak/chkbit-py
 
-Download
---------
-Static amd64 binary that should work on all Linux distros:
-https://github.com/rfjakob/cshatag/releases
-
-Distro Packages
----------------
-[![Packaging status](https://repology.org/badge/vertical-allrepos/cshatag.svg)](https://repology.org/project/cshatag/versions)
-
-Compile Yourself
+Compile
 ----------------
 Needs git, Go and make.
 

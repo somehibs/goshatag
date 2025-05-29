@@ -1,23 +1,23 @@
 .\"Generate README file for github: MANWIDTH=80 man ./cshatag.1 > README
-.TH CSHATAG 1 "MAY 2012" Linux "User Manuals"
+.TH GOSHATAG 1 "MAY 2012" "Version 3.0.0" "User Manuals"
 .SH NAME
 
-cshatag \- compiled shatag
+goshatag \- tag files with sha256 hashes to detect bitrot
 
 .SH SYNOPSIS
 
-cshatag [OPTIONS] FILE [FILE...]
+goshatag [OPTIONS] FILE [FILE...]
 
 .SH DESCRIPTION
 
-cshatag is a minimal and fast re-implementation of shatag
+goshatag is a minimal and fast re-implementation of shatag
 .br
 ( https://github.com/maugier/shatag , written in Python
-by Maxime Augier )
+by Maxime Augier)
 .br
 in a compiled language (since v2.0: Go, earlier versions: C).
 
-cshatag is a tool to detect silent data corruption. It writes
+goshatag is a tool to detect silent data corruption. It writes
 the mtime and the sha256 checksum of a file into the file's
 extended attributes. The filesystem needs to be mounted with
 user_xattr enabled for this to work.
@@ -39,11 +39,14 @@ File statuses that appear on stdout are:
 .br
 	<corrupt>     mtime stayed the same but checksum changed
 
-cshatag aims to be format-compatible with shatag and uses the
-same extended attributes (see the COMPATIBILITY section).
+goshatag no longer aims to be format-compatible with (c)shatag.
+If you want to use a cshatag filesystem with goshatag, please run
+goshatag with the argument -migrate to completion at least once.
+The migration process can be interrupted safely.
+(see the COMPATIBILITY section).
 
-cshatag was written in C in 2012 and has been
-rewritten in Go in 2019.
+cshatag was written in C in 2012 and has been rewritten in Go in 2019.
+goshatag was forked in 2025.
 
 .SH OPTIONS
 
@@ -58,19 +61,33 @@ rewritten in Go in 2019.
 -qq         quiet2 mode - only report <corrupt> files and errors
 .br
 -fix        fix the stored sha256 on corrupt files
+.br
+-migrate    migrate from user.shatag.{sha256,ts} to user.hash (ext4 compatibility)
+.br
+-plaintext  use user.shatag.{sha256,ts} instead of user.hash (cshatag compatibility)
+.br
+-printok    print sha256 and ts for <ok> files
 
 .SH EXAMPLES
 
-Check all regular files in the file tree below the current working directory:
+Check all regular files in the current working directory's file tree:
 .br
-# cshatag -qq -recursive .
+# goshatag -qq -recursive .
 .br
 Errors like corrupt files will be printed to stderr.
 Run without "-qq" to see progress output.
 
-To remove the extended attributes from all files:
+To remove extended attributes from all files:
 .br
-# cshatag -recursive -remove .
+# goshatag -recursive -remove .
+
+To migrate from cshatag to goshatag:
+.br
+# goshatag -qq -recursive -migrate .
+
+To remove extended attributes from all files, including (c)shatag attributes:
+.br
+# goshatag -recursive -plaintext -remove .
 
 .SH "RETURN VALUE"
 
@@ -90,17 +107,24 @@ To remove the extended attributes from all files:
 
 .SH COMPATIBILITY
 
-cshatag writes the user.shatag.ts field with full integer
-nanosecond precision, while python uses a double for the
-whole mtime and loses the last few digits.
+goshatag writes the extended attribute user.hash with both the sha256
+hash and the ASCII encoded time, whereas the original cshatag and shatag use
+the attribut names user.shatag.sha256 and user.shatag.ts
+goshatag and cshatag use higher precision timestamps as compared to the 
+shatag (python) version
 
-.SH AUTHOR
+.SH AUTHORS
+somehibs <@github>
+.br
+https://github.com/somehibs/goshatag
+
 Jakob Unterwurzacher <jakobunt@gmail.com>
 .br
 https://github.com/rfjakob/cshatag
 
 .SH COPYRIGHT
+Copyright 2025 somehibs. MIT License.
 Copyright 2012 Jakob Unterwurzacher. MIT License.
 
 .SH "SEE ALSO"
-shatag(1), sha256sum(1), getfattr(1), setfattr(1)
+cshatag(1), shatag(1), sha256sum(1), getfattr(1), setfattr(1)

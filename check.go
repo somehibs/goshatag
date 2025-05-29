@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"errors"
 	"io"
 	"os"
 	"runtime"
@@ -16,6 +18,7 @@ import (
 
 const xattrSha256 = "user.shatag.sha256"
 const xattrTs = "user.shatag.ts"
+const xattrCombined = "user.hash"
 const zeroSha256 = "0000000000000000000000000000000000000000000000000000000000000000"
 
 type fileTimestamp struct {
@@ -45,34 +48,68 @@ func (ts *fileTimestamp) equalTruncatedTimestamp(ts2 *fileTimestamp) bool {
 }
 
 type fileAttr struct {
-	ts     fileTimestamp
-	sha256 []byte
+	ts          fileTimestamp
+	sha256      []byte
+	storageType int
 }
 
 func (a *fileAttr) prettyPrint() string {
-	return fmt.Sprintf("%s %s", string(a.sha256), a.ts.prettyPrint())
+	sha := ""
+	if a.sha256 == nil {
+		sha = zeroSha256
+	} else {
+		sha = fmt.Sprintf("%x", a.sha256)
+	}
+	return fmt.Sprintf("%s %s", sha, a.ts.prettyPrint())
 }
 
-// getStoredAttr reads the stored extendend attributes from a file. The file
-// should look like this:
+func parseStoredTs(storedTs []byte) (ts fileTimestamp) {
+	parts := strings.SplitN(string(storedTs), ".", 2)
+	ts.s, _ = strconv.ParseUint(parts[0], 10, 64)
+	if len(parts) > 1 {
+		ns64, _ := strconv.ParseUint(parts[1], 10, 32)
+		ts.ns = uint32(ns64)
+	}
+	return
+}
+
+// getStoredAttr reads the stored extended attributes from a file. The file
+// used to look like this:
 //
 //	$ getfattr -d foo.txt
 //	user.shatag.sha256="dc9fe2260fd6748b29532be0ca2750a50f9eca82046b15497f127eba6dda90e8"
-//	user.shatag.ts="1560177334.020775051"
+//	user.shatag.ts="1748509446.586368096"
+//
+// now it looks more like this
+//	$ getfattr -e hex -d foo.txt
+//	user.hash=0xdc9fe2260fd6748b29532be0ca2750a50f9eca82046b15497f127eba6dda90e8     313734383530393434362e353836333638303936
+// 
+var newStorage = errors.New("new_storage")
 func getStoredAttr(f *os.File) (attr fileAttr, err error) {
-	attr.sha256 = []byte(zeroSha256)
-	val, err := xattr.FGet(f, xattrSha256)
-	if err == nil {
-		copy(attr.sha256, val)
-	}
-	val, err = xattr.FGet(f, xattrTs)
-	if err == nil {
-		parts := strings.SplitN(string(val), ".", 2)
-		attr.ts.s, _ = strconv.ParseUint(parts[0], 10, 64)
-		if len(parts) > 1 {
-			ns64, _ := strconv.ParseUint(parts[1], 10, 32)
-			attr.ts.ns = uint32(ns64)
+	attr.sha256 = nil
+	if args.migrate || args.plaintext {
+		val, err := xattr.FGet(f, xattrSha256)
+		if err == nil {
+			unhexed, err := hex.DecodeString(string(val))
+			if err != nil {
+				return attr, err
+			}
+			attr.sha256 = make([]byte, 32)
+			copy(attr.sha256, unhexed)
 		}
+		val, err = xattr.FGet(f, xattrTs)
+		if err == nil {
+			attr.ts = parseStoredTs(val)
+			attr.storageType = 1
+		}
+	}
+	// always try to get the new storage, avoiding excess writes during migration
+	val, err := xattr.FGet(f, xattrCombined)
+	if err == nil {
+		attr.sha256 = make([]byte, 32)
+		copy(attr.sha256, val[:32])
+		attr.ts = parseStoredTs(val[32:])
+		attr.storageType = 2
 	}
 	return attr, nil
 }
@@ -90,7 +127,6 @@ func getMtime(f *os.File) (ts fileTimestamp, err error) {
 
 // getActualAttr reads the actual modification time and hashes the file content.
 func getActualAttr(f *os.File) (attr fileAttr, err error) {
-	attr.sha256 = []byte(zeroSha256)
 	attr.ts, err = getMtime(f)
 	if err != nil {
 		return attr, err
@@ -106,7 +142,7 @@ func getActualAttr(f *os.File) (attr fileAttr, err error) {
 	} else if attr.ts != ts2 {
 		return attr, syscall.EINPROGRESS
 	}
-	attr.sha256 = []byte(fmt.Sprintf("%x", h.Sum(nil)))
+	attr.sha256 = h.Sum(nil)
 	return attr, nil
 }
 
@@ -160,24 +196,31 @@ func checkFile(fn string) {
 	if stored.ts.equalTruncatedTimestamp(&actual.ts) {
 		if bytes.Equal(stored.sha256, actual.sha256) {
 			if !args.q {
-				fmt.Printf("<ok> %s\n", fn)
+				if args.printok {
+					fmt.Printf("%s %s\n", fn, stored.prettyPrint())
+				} else {
+					fmt.Printf("<ok> %s\n", fn)
+				}
 			}
 			stats.ok++
-			return
+			if !args.migrate {
+				return
+			}
+		} else {
+			fixing := " Keeping hash as-is (use -fix to force hash update)."
+			if args.fix {
+				fixing = " Fixing hash (-fix was passed)."
+			}
+			fmt.Fprintf(os.Stderr, "Error: corrupt file %q. %s\n", fn, fixing)
+			fmt.Printf("<corrupt> %s\n", fn)
+			stats.corrupt++
 		}
-		fixing := " Keeping hash as-is (use -fix to force hash update)."
-		if args.fix {
-			fixing = " Fixing hash (-fix was passed)."
-		}
-		fmt.Fprintf(os.Stderr, "Error: corrupt file %q. %s\n", fn, fixing)
-		fmt.Printf("<corrupt> %s\n", fn)
-		stats.corrupt++
 	} else if bytes.Equal(stored.sha256, actual.sha256) {
 		if !args.qq {
 			fmt.Printf("<timechange> %s\n", fn)
 		}
 		stats.timechange++
-	} else if bytes.Equal(stored.sha256, []byte(zeroSha256)) && (stored.ts == allZeroTimeStamp) {
+	} else if stored.sha256 == nil && (stored.ts == allZeroTimeStamp) {
 		// no metadata indicates a 'new' file
 		if !args.qq {
 			fmt.Printf("<new> %s\n", fn)
@@ -197,7 +240,11 @@ func checkFile(fn string) {
 
 	// Only update the stored attribute if it is not corrupted **OR**
 	// if argument '-fix' been given.
-	if stored.ts != actual.ts || args.fix {
+	if stored.ts != actual.ts || args.fix || (args.migrate && stored.storageType != 2) {
+		if args.migrate {
+			// don't allow the old attributes to exist
+			removePlaintextAttr(f)
+		}
 		err = storeAttr(f, actual)
 	}
 
