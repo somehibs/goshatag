@@ -34,16 +34,23 @@ var args struct {
 	migrate   bool
 	plaintext bool
 	printok   bool // output from <ok> is extended with sha and time info
+	mt        int  // multithreading
 }
 
-// walkFn is used when `cshatag` is called with the `--recursive` option. It is the function called
+var fileChan = make(chan string)
+
+// walkFn is used when `goshatag` is called with the `--recursive` option. It is the function called
 // for each file or directory visited whilst traversing the file tree.
 func walkFn(path string, info os.FileInfo, err error) error {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error accessing %q: %v\n", path, err)
 		stats.errorsOpening++
 	} else if info.Mode().IsRegular() {
-		checkFile(path)
+		if args.mt != 0 {
+			fileChan <- path
+		} else {
+			checkFile(path)
+		}
 	} else if !info.IsDir() {
 		if !args.qq {
 			fmt.Printf("<nonregular> %s\n", path)
@@ -61,7 +68,11 @@ func processArg(fn string) {
 		fmt.Fprintln(os.Stderr, err)
 		stats.errorsOpening++
 	} else if fi.Mode().IsRegular() {
-		checkFile(fn)
+		if args.mt != 0 {
+			fileChan <- fn
+		} else {
+			checkFile(fn)
+		}
 	} else if fi.IsDir() {
 		if args.recursive {
 			filepath.Walk(fn, walkFn)
@@ -76,7 +87,7 @@ func processArg(fn string) {
 }
 
 func main() {
-	const myname = "cshatag"
+	const myname = "goshatag"
 
 	if GitVersion == "" {
 		GitVersion = "(version unknown)"
@@ -92,6 +103,7 @@ func main() {
 	flag.BoolVar(&args.migrate, "migrate", false, "migrate from user.shatag.{sha256,ts} to user.hash")
 	flag.BoolVar(&args.plaintext, "plaintext", false, "use user.shatag.{sha256,ts} instead of user.hash")
 	flag.BoolVar(&args.printok, "printok", false, "print sha256 and ts for <ok> files")
+	flag.IntVar(&args.mt, "mt", 0, "number of threads, default of 0 for single threaded with no mt calls. nonzero may result in files being printed in an inconsistent order")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "%s %s\n", myname, GitVersion)
 		fmt.Fprintf(os.Stderr, "Usage: %s [OPTIONS] FILE [FILE2 ...]\n", myname)

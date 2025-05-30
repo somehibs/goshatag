@@ -20,6 +20,16 @@ const xattrSha256 = "user.shatag.sha256"
 const xattrTs = "user.shatag.ts"
 const xattrCombined = "user.hash"
 const zeroSha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+var (
+	// file sha doesn't match current sha
+	ErrCorrupt = errors.New("file_corrupt")
+	// stored time doesn't match modified time
+	ErrOutdated = errors.New("outdated")
+	// time changed so regenerate sha without checking
+	ErrTimeChange = errors.New("time_changed")
+	// no time or sha so regenerate sha
+	ErrNoMetadata = errors.New("no_metadata")
+)
 
 type fileTimestamp struct {
 	s  uint64
@@ -154,7 +164,7 @@ func printComparison(stored fileAttr, actual fileAttr) {
 	fmt.Printf(" stored: %s\n actual: %s\n", stored.prettyPrint(), actual.prettyPrint())
 }
 
-func checkFile(fn string) {
+func checkFile(fn string) (err error) {
 	stats.total++
 	f, err := os.Open(fn)
 	if err != nil {
@@ -193,7 +203,8 @@ func checkFile(fn string) {
 
 	var allZeroTimeStamp fileTimestamp
 
-	if stored.ts.equalTruncatedTimestamp(&actual.ts) {
+	// files can only be verified / corrupt if they have actual storage, otherwise they're just new
+	if stored.storageType != 0 && stored.ts.equalTruncatedTimestamp(&actual.ts) {
 		if bytes.Equal(stored.sha256, actual.sha256) {
 			if !args.q {
 				if args.printok {
@@ -214,23 +225,27 @@ func checkFile(fn string) {
 			fmt.Fprintf(os.Stderr, "Error: corrupt file %q. %s\n", fn, fixing)
 			fmt.Printf("<corrupt> %s\n", fn)
 			stats.corrupt++
+			err = ErrCorrupt
 		}
 	} else if bytes.Equal(stored.sha256, actual.sha256) {
 		if !args.qq {
 			fmt.Printf("<timechange> %s\n", fn)
 		}
+		err = ErrTimeChange
 		stats.timechange++
 	} else if stored.sha256 == nil && (stored.ts == allZeroTimeStamp) {
 		// no metadata indicates a 'new' file
 		if !args.qq {
 			fmt.Printf("<new> %s\n", fn)
 		}
+		err = ErrNoMetadata
 		stats.newfile++
 	} else {
 		// timestamp is outdated
 		if !args.qq {
 			fmt.Printf("<outdated> %s\n", fn)
 		}
+		err = ErrOutdated
 		stats.outdated++
 	}
 
@@ -239,18 +254,18 @@ func checkFile(fn string) {
 	}
 
 	// Only update the stored attribute if it is not corrupted **OR**
-	// if argument '-fix' been given.
-	if stored.ts != actual.ts || args.fix || (args.migrate && stored.storageType != 2) {
+	// if argument '-fix' been given **OR** if it hasn't been written and the file has a modified timestamp of 0
+	if stored.storageType == 0 || stored.ts != actual.ts || args.fix || (args.migrate && stored.storageType != 2) {
 		if args.migrate {
 			// don't allow the old attributes to exist
 			removePlaintextAttr(f)
 		}
 		err = storeAttr(f, actual)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
+			stats.errorsWritingXattr++
+			return
+		}
 	}
-
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-		stats.errorsWritingXattr++
-		return
-	}
+	return
 }

@@ -49,6 +49,9 @@ func storeAttr(f *os.File, attr fileAttr) (err error) {
 }
 
 func removePlaintextAttr(f *os.File) error {
+	if args.dryrun {
+		return nil
+	}
 	err1 := xattr.FRemove(f, xattrTs)
 	err2 := xattr.FRemove(f, xattrSha256)
 	if err1 != nil && err2 != nil {
