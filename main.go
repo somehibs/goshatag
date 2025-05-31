@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sync"
 	"path/filepath"
 )
 
@@ -37,7 +38,53 @@ var args struct {
 	mt        int  // multithreading
 }
 
+type StatsReport struct {
+	path string
+	err error
+}
+
 var fileChan = make(chan string)
+var statsChan = make(chan StatsReport)
+var wg sync.WaitGroup
+var statsgroup sync.WaitGroup
+
+func consumeStatsForever() {
+	defer statsgroup.Done()
+	for report := range statsChan {
+		recordStat(report.path, report.err)
+	}
+}
+
+func consumeFilesForever() {
+	defer wg.Done()
+	for path := range fileChan {
+		statsChan <- StatsReport{path: path, err: checkFile(path)}
+	}
+}
+
+func recordStat(path string, err error) {
+	fmt.Printf("%s %s\n", path, err)
+	stats.total++
+	switch err {
+	case ErrCorrupt:
+		stats.corrupt++
+	case ErrTimeChange:
+		stats.timechange++
+	case ErrOutdated:
+		stats.outdated++
+	case ErrNoMetadata:
+		stats.newfile++
+	case ErrInProgress:
+		stats.inprogress++
+	case ErrWriteAttr:
+		stats.errorsWritingXattr++
+	case ErrOsOpen:
+		stats.errorsOpening++
+	case nil:
+		stats.ok++
+		fmt.Println("ok")
+	}
+}
 
 // walkFn is used when `goshatag` is called with the `--recursive` option. It is the function called
 // for each file or directory visited whilst traversing the file tree.
@@ -49,7 +96,8 @@ func walkFn(path string, info os.FileInfo, err error) error {
 		if args.mt != 0 {
 			fileChan <- path
 		} else {
-			checkFile(path)
+			err := checkFile(path)
+			recordStat(path, err)
 		}
 	} else if !info.IsDir() {
 		if !args.qq {
@@ -71,7 +119,8 @@ func processArg(fn string) {
 		if args.mt != 0 {
 			fileChan <- fn
 		} else {
-			checkFile(fn)
+			err := checkFile(fn)
+			recordStat(fn, err)
 		}
 	} else if fi.IsDir() {
 		if args.recursive {
@@ -120,8 +169,26 @@ func main() {
 		args.q = true
 	}
 
+	if args.mt > 0 {
+		fileChan = make(chan string, args.mt)
+		statsChan = make(chan StatsReport, args.mt)
+		for range args.mt {
+			wg.Add(1)
+			fmt.Println("starting new mt thread")
+			go consumeFilesForever()
+		}
+		statsgroup.Add(1)
+		go consumeStatsForever()
+	}
+
 	for _, fn := range flag.Args() {
 		processArg(fn)
+	}
+	if args.mt > 0 {
+		close(fileChan)
+		wg.Wait()
+		close(statsChan)
+		statsgroup.Wait()
 	}
 
 	if stats.corrupt > 0 {
@@ -130,6 +197,7 @@ func main() {
 
 	totalErrors := stats.errorsOpening + stats.errorsNotRegular + stats.errorsWritingXattr +
 		stats.errorsOther
+		fmt.Printf("Stats: total: %d ok: %d total errors: %d corrupt: %d\n", stats.total, stats.ok, totalErrors, stats.corrupt)
 	if totalErrors > 0 {
 		if stats.errorsOpening == totalErrors {
 			os.Exit(2)

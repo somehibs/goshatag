@@ -29,6 +29,14 @@ var (
 	ErrTimeChange = errors.New("time_changed")
 	// no time or sha so regenerate sha
 	ErrNoMetadata = errors.New("no_metadata")
+	// file was modified during sha computation
+	ErrInProgress = errors.New("in_progress")
+	// file was modified during sha computation
+	ErrWriteAttr = errors.New("write_attr_failed")
+	// can't remove attr in -remove mode, can't fetch actual modified time or sha256 in regular mode
+	ErrOther = errors.New("other")
+	// can't open file
+	ErrOsOpen = errors.New("os_open")
 )
 
 type fileTimestamp struct {
@@ -165,25 +173,21 @@ func printComparison(stored fileAttr, actual fileAttr) {
 }
 
 func checkFile(fn string) (err error) {
-	stats.total++
 	f, err := os.Open(fn)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-		stats.errorsOpening++
-		return
+		return ErrOsOpen
 	}
 	defer f.Close()
 
 	if args.remove {
 		if err = removeAttr(f); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-			stats.errorsOther++
-			return
+			return ErrOther
 		}
 		if !args.q {
 			fmt.Printf("<removed xattr> %s\n", fn)
 		}
-		stats.ok++
 		return
 	}
 
@@ -193,12 +197,10 @@ func checkFile(fn string) (err error) {
 		if !args.qq {
 			fmt.Printf("<concurrent modification> %s\n", fn)
 		}
-		stats.inprogress++
-		return
+		return ErrInProgress
 	} else if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-		stats.errorsOther++
-		return
+		return ErrOther
 	}
 
 	var allZeroTimeStamp fileTimestamp
@@ -213,7 +215,6 @@ func checkFile(fn string) (err error) {
 					fmt.Printf("<ok> %s\n", fn)
 				}
 			}
-			stats.ok++
 			if !args.migrate {
 				return
 			}
@@ -224,7 +225,6 @@ func checkFile(fn string) (err error) {
 			}
 			fmt.Fprintf(os.Stderr, "Error: corrupt file %q. %s\n", fn, fixing)
 			fmt.Printf("<corrupt> %s\n", fn)
-			stats.corrupt++
 			err = ErrCorrupt
 		}
 	} else if bytes.Equal(stored.sha256, actual.sha256) {
@@ -232,21 +232,18 @@ func checkFile(fn string) (err error) {
 			fmt.Printf("<timechange> %s\n", fn)
 		}
 		err = ErrTimeChange
-		stats.timechange++
 	} else if stored.sha256 == nil && (stored.ts == allZeroTimeStamp) {
 		// no metadata indicates a 'new' file
 		if !args.qq {
 			fmt.Printf("<new> %s\n", fn)
 		}
 		err = ErrNoMetadata
-		stats.newfile++
 	} else {
 		// timestamp is outdated
 		if !args.qq {
 			fmt.Printf("<outdated> %s\n", fn)
 		}
 		err = ErrOutdated
-		stats.outdated++
 	}
 
 	if !args.qq {
@@ -254,7 +251,8 @@ func checkFile(fn string) (err error) {
 	}
 
 	// Only update the stored attribute if it is not corrupted **OR**
-	// if argument '-fix' been given **OR** if it hasn't been written and the file has a modified timestamp of 0
+	// if argument '-fix' been given **OR**
+	// if it hasn't been written and the file has a modified timestamp of 0
 	if stored.storageType == 0 || stored.ts != actual.ts || args.fix || (args.migrate && stored.storageType != 2) {
 		if args.migrate {
 			// don't allow the old attributes to exist
@@ -263,8 +261,7 @@ func checkFile(fn string) (err error) {
 		err = storeAttr(f, actual)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-			stats.errorsWritingXattr++
-			return
+			return ErrWriteAttr
 		}
 	}
 	return
