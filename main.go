@@ -150,7 +150,7 @@ func main() {
 	flag.BoolVar(&args.migrate, "migrate", false, "migrate from user.shatag.{sha256,ts} to user.hash")
 	flag.BoolVar(&args.plaintext, "plaintext", false, "use user.shatag.{sha256,ts} instead of user.hash")
 	flag.BoolVar(&args.printok, "printok", false, "print sha256 and ts for <ok> files")
-	flag.IntVar(&args.mt, "mt", 0, "number of threads, default of 0 for single threaded with no mt calls. nonzero may result in files being printed in an inconsistent order")
+	flag.IntVar(&args.mt, "mt", 0, "number of threads to read files across (0 preserves ordering, careful going higher than 1 with spinning rust!)")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "%s %s\n", myname, GitVersion)
 		fmt.Fprintf(os.Stderr, "Usage: %s [OPTIONS] FILE [FILE2 ...]\n", myname)

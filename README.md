@@ -88,10 +88,13 @@ OPTIONS
        -plaintext   use  user.shatag.{sha256,ts} instead of user.hash (cshatag
        compatibility)
        -printok    print sha256 and ts for <ok> files
+       -mt <num_threads>   number of threads to read files across (0 preserves
+       ordering, careful going higher than 1 with spinning rust!)
 
 EXAMPLES
-       Check all regular files in the current working directory's file tree:
-       # goshatag -qq -recursive .
+       Check all regular files in the current working directory's file tree on
+       an SSD across 8 threads:
+       # goshatag -qq -recursive -mt 8 .
        Errors like corrupt files will be printed to stderr.  Run without "-qq"
        to see progress output.
 
