@@ -1,4 +1,4 @@
 # Ignore the produced binary
-cshatag
+goshatag
 *.tar.gz
 *.tar.gz.asc

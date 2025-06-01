@@ -71,13 +71,16 @@ type fileAttr struct {
 	storageType int
 }
 
-func (a *fileAttr) prettyPrint() string {
-	sha := ""
+func (a *fileAttr) shaPrint() (sha string) {
 	if a.sha256 == nil {
 		sha = zeroSha256
 	} else {
 		sha = fmt.Sprintf("%x", a.sha256)
 	}
+	return
+}
+func (a *fileAttr) prettyPrint() string {
+	sha := a.shaPrint()
 	return fmt.Sprintf("%s %s", sha, a.ts.prettyPrint())
 }
 
@@ -210,7 +213,7 @@ func checkFile(fn string) (err error) {
 		if bytes.Equal(stored.sha256, actual.sha256) {
 			if !args.q {
 				if args.printok {
-					fmt.Printf("%s %s\n", fn, stored.prettyPrint())
+					fmt.Printf("%s  %s\n", stored.shaPrint(), fn)
 				} else {
 					fmt.Printf("<ok> %s\n", fn)
 				}
